@@ -1,75 +1,178 @@
-"""第三步端到端测试:命令行跑完整 Agent 循环。
-
-用法:
-    cd ~/Projects/tron-scam-agent
-    uv run python -m tests.test_agent [TRON地址]
-
-不带参数会用币安热钱包(应判定安全)。
-每次 Agent 暂停时,终端会问 c/f/q,按回车继续。
-"""
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
-from pathlib import Path
+import types
+import unittest
+from unittest.mock import patch
 
-from dotenv import load_dotenv
+if "openai" not in sys.modules:
+    fake_openai = types.ModuleType("openai")
 
-from src.agent import AgentEvent, run_cli
+    class _AsyncOpenAI:  # pragma: no cover - test import stub
+        def __init__(self, *args, **kwargs) -> None:
+            pass
 
-DEFAULT_ADDRESS = "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7"  # 币安热钱包
+    fake_openai.AsyncOpenAI = _AsyncOpenAI
+    sys.modules["openai"] = fake_openai
 
+if "httpx" not in sys.modules:
+    fake_httpx = types.ModuleType("httpx")
 
-def _short_json(d: dict, maxlen: int = 200) -> str:
-    import json
-    s = json.dumps(d, ensure_ascii=False, default=str)
-    return s if len(s) <= maxlen else s[:maxlen] + "…"
+    class _AsyncClient:  # pragma: no cover - test import stub
+        def __init__(self, *args, **kwargs) -> None:
+            pass
 
+        async def aclose(self) -> None:
+            return None
 
-def print_event(ev: AgentEvent) -> None:
-    t = ev.type
-    d = ev.data
-    if t == "thinking":
-        text = (d.get("text") or "").strip()
-        if text:
-            print(f"\n💭 {text}")
-    elif t == "tool_call":
-        print(f"  → {d['name']}({_short_json(d['args'], 120)})")
-    elif t == "tool_result":
-        print(f"    ✓ {d['name']}: {_short_json(d['result'], 160)}")
-    elif t == "phase_summary":
-        print("\n" + "=" * 60)
-        print(f"📊 阶段性结论  ({d['current_verdict']} / 置信度 {d['confidence']})")
-        print("=" * 60)
-        print(d["summary_markdown"])
-        print("\n统计:", d["stats"])
-    elif t == "final_report":
-        print("\n" + "=" * 60)
-        print("📄 最终报告")
-        print("=" * 60)
-        print(d.get("markdown", ""))
-    elif t == "error":
-        print(f"\n❌ 错误: {d.get('message')}")
-    elif t == "done":
-        print(f"\n✅ 结束:{d}")
+    fake_httpx.AsyncClient = _AsyncClient
+    sys.modules["httpx"] = fake_httpx
 
+if "tenacity" not in sys.modules:
+    fake_tenacity = types.ModuleType("tenacity")
 
-def ask_user_decision(payload: dict) -> str:
-    while True:
-        choice = input("\n>>> 继续深挖(c) / 结束生成报告(f) / 退出(q): ").strip().lower()
-        if choice in ("c", "f", "q"):
-            return choice
-        print("无效选项,请输入 c / f / q")
+    def _retry(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
+    def _identity(*args, **kwargs):
+        return None
+
+    fake_tenacity.retry = _retry
+    fake_tenacity.retry_if_exception_type = _identity
+    fake_tenacity.stop_after_attempt = _identity
+    fake_tenacity.wait_exponential = _identity
+    sys.modules["tenacity"] = fake_tenacity
+
+from src.api import API
+from src.tron_client import TronScanError
 
 
-async def main() -> None:
-    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+class DummyAgent:
+    def __init__(self, target_address: str, user_context: str = "") -> None:
+        self.target = target_address
+        self.user_context = user_context
 
-    address = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_ADDRESS
-    print(f"🎯 目标地址: {address}\n")
 
-    await run_cli(address, decision_cb=ask_user_decision, on_event=print_event)
+class ApiTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        self.api = API()
+        self.valid_address = "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7"
+
+    def test_start_analysis_requires_config_before_thread_starts(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            result = self.api.start_analysis(self.valid_address)
+
+        self.assertEqual(
+            result,
+            {
+                "ok": False,
+                "error": "未完成运行配置，请先补充：DeepSeek API Key、TronScan API Key",
+            },
+        )
+        self.assertFalse(self.api._is_running)
+        self.assertIsNone(self.api._thread)
+
+    def test_start_analysis_trims_context_and_starts_thread(self) -> None:
+        with (
+            patch.dict(
+                os.environ,
+                {"DEEPSEEK_API_KEY": "deepseek", "TRON_PRO_API_KEY": "tron"},
+                clear=True,
+            ),
+            patch("src.api.Agent", DummyAgent),
+            patch.object(API, "_thread_body", autospec=True),
+        ):
+            result = self.api.start_analysis(self.valid_address, " x " * 800)
+
+        self.assertTrue(result["ok"])
+        self.assertLessEqual(len(result["user_context"]), 2000)
+        self.assertTrue(self.api._is_running)
+        self.assertIsNotNone(self.api._thread)
+
+    def test_user_decision_rejected_when_not_waiting(self) -> None:
+        self.api._loop = asyncio.new_event_loop()
+        self.api._decision_queue = asyncio.Queue()
+        self.api._awaiting_decision = False
+        try:
+            result = self.api.user_decision("finish")
+        finally:
+            self.api._loop.close()
+            self.api._loop = None
+            self.api._decision_queue = None
+
+        self.assertEqual(result, {"ok": False, "error": "当前不在等待用户决策"})
+
+    def test_user_decision_accepts_when_waiting(self) -> None:
+        loop = asyncio.new_event_loop()
+        queue: asyncio.Queue[str] = asyncio.Queue()
+        captured: list[str] = []
+
+        def call_soon_threadsafe(callback, *args):
+            callback(*args)
+
+        async def drain() -> None:
+            captured.append(await queue.get())
+
+        self.api._loop = loop
+        self.api._decision_queue = queue
+        self.api._awaiting_decision = True
+        with patch.object(loop, "call_soon_threadsafe", side_effect=call_soon_threadsafe):
+            result = self.api.user_decision("finish")
+            loop.run_until_complete(drain())
+        loop.close()
+        self.api._loop = None
+        self.api._decision_queue = None
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(captured, ["finish"])
+        self.assertFalse(self.api._awaiting_decision)
+
+    def test_cancel_analysis_requires_running_session(self) -> None:
+        result = self.api.cancel_analysis()
+        self.assertEqual(result, {"ok": False, "error": "当前没有进行中的分析"})
+
+    def test_cancel_analysis_cancels_task_and_clears_waiting_state(self) -> None:
+        loop = asyncio.new_event_loop()
+        task = loop.create_task(asyncio.sleep(60))
+        queue: asyncio.Queue[str] = asyncio.Queue()
+        queue.put_nowait("continue")
+
+        def call_soon_threadsafe(callback, *args):
+            callback(*args)
+
+        self.api._is_running = True
+        self.api._loop = loop
+        self.api._agent_task = task
+        self.api._decision_queue = queue
+        self.api._awaiting_decision = True
+
+        with patch.object(loop, "call_soon_threadsafe", side_effect=call_soon_threadsafe):
+            result = self.api.cancel_analysis()
+        try:
+            loop.run_until_complete(task)
+        except asyncio.CancelledError:
+            pass
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(self.api._ending_reason, "user_cancelled")
+        self.assertFalse(self.api._awaiting_decision)
+        self.assertTrue(task.cancelled())
+        self.assertTrue(queue.empty())
+
+        loop.close()
+        self.api._loop = None
+        self.api._agent_task = None
+        self.api._decision_queue = None
+        self.api._is_running = False
+
+    def test_friendly_error_message_hides_internal_details(self) -> None:
+        msg = self.api._friendly_error_message(TronScanError("TRON_PRO_API_KEY missing"))
+        self.assertEqual(msg, "TronScan 服务不可用或配置有误，请检查 API Key 后重试")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    unittest.main()

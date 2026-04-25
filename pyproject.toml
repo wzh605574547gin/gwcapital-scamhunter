@@ -3,7 +3,7 @@ name = "tron-scam-agent"
 version = "0.2.0"
 description = "GWCAPITAL · TRON ScamHunter — DeepSeek 驱动的链上诈骗追溯桌面工具"
 authors = [{name = "GWCAPITAL"}]
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "openai>=1.54.0",
     "httpx>=0.27.0",

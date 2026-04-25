@@ -23,7 +23,7 @@
 |---|---|
 | 桌面框架 | PyWebView(原生 macOS 窗口,内嵌 WebKit) |
 | 前端 | 纯 HTML/CSS/JS + Tailwind CDN + Mermaid + marked |
-| 后端 | Python 3.12,asyncio,httpx,SQLAlchemy(预留) |
+| 后端 | Python 3.11 / 3.12,asyncio,httpx,SQLAlchemy(预留) |
 | AI 模型 | **DeepSeek V3**(OpenAI 兼容接口) |
 | 链上数据 | **TronScan REST API** |
 
@@ -33,26 +33,42 @@
 
 ### 第一次跑
 
-1. 装 Python 3.12(python.org 下载 pkg 或 `brew install python@3.12`)
+1. 安装 Python 3.11 或 3.12
+   推荐新手直接装 Python 3.12（python.org 下载 pkg，或 `brew install python@3.12`）
 2. 装 uv:
    ```bash
-   python3.12 -m pip install --user uv
+   python3 -m pip install --user uv
    ```
 3. 克隆仓库:
    ```bash
    git clone <your-repo-url> ~/Projects/tron-scam-agent
    cd ~/Projects/tron-scam-agent
    ```
-4. 准备 API Key:
+4. 准备 API Key（新手推荐直接放在项目根目录）:
    ```bash
    cp .env.example .env
    # 编辑 .env,填入 TRON_PRO_API_KEY 和 DEEPSEEK_API_KEY
    ```
+   也支持把配置文件放到 `~/.tron_scam_agent/.env`，源码启动和 `.app` 启动都会读取这两个位置。
 5. 启动:
    ```bash
-   ./run.sh          # 终端启动
-   # 或者在 Finder 里双击 run.command
+   ./run.sh
    ```
+   或者在 Finder 里双击 `run.command`
+
+### 启动前自检
+
+- 先确认 `python3 --version` 是 3.11 或 3.12
+- 先确认 `uv --version` 能正常输出版本号
+- 先确认 `.env` 已填写以下两项：
+  - `TRON_PRO_API_KEY`
+  - `DEEPSEEK_API_KEY`
+- 如果你什么都不懂，最稳妥的流程就是：
+  1. 安装 Python
+  2. 执行 `python3 -m pip install --user uv`
+  3. 执行 `cp .env.example .env`
+  4. 填入两个 API Key
+  5. 双击 `run.command`
 
 ### 打包成 .app(可选)
 
@@ -62,6 +78,8 @@
 ```
 
 > 首次双击打开会报"来自未识别的开发者"—— **右键 → 打开** 即可放行。
+>
+> `.app` 不会把你的 API Key 打进包里，请继续使用项目根目录 `.env` 或 `~/.tron_scam_agent/.env`。
 
 ---
 
