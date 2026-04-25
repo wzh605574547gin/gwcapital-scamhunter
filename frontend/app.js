@@ -17,6 +17,7 @@ const state = {
   progressStep: 0,
   logVisible: false,
   graphVisible: false,
+  bridgeReady: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -53,6 +54,12 @@ function setHomeStatus(message = "", kind = "info") {
     ok: "var(--success)",
     err: "var(--danger)",
   }[kind];
+}
+
+function setStartButtonState(disabled, label = "开始分析") {
+  const button = $("start-button");
+  button.disabled = disabled;
+  button.textContent = label;
 }
 
 function setBadge(text, variant = "info") {
@@ -298,11 +305,16 @@ async function onDecisionClick(choice) {
 }
 
 async function returnHome() {
-  if (!state.sessionEnded && state.toolCount > 0) {
+  if (!state.sessionEnded && state.sessionId) {
     const confirmed = window.confirm("返回首页后，本次分析进度会丢失。确定现在结束并返回首页吗？");
     if (!confirmed) return;
     if (window.pywebview?.api?.cancel_analysis) {
-      await window.pywebview.api.cancel_analysis();
+      const result = await window.pywebview.api.cancel_analysis();
+      if (!result?.ok) {
+        logError(result?.error || "终止分析失败，请稍后重试。");
+        setBadge("终止失败", "danger");
+        return;
+      }
     }
   }
   show("view-home");
@@ -312,7 +324,21 @@ async function returnHome() {
   updateAddressCount();
   updateContextCount();
   setAddressError(false);
-  setHomeStatus("");
+  setHomeStatus("已终止本次分析，你可以重新输入地址开始新的检查。", "ok");
+  if (!state.bridgeReady) {
+    setStartButtonState(true, "等待应用连接");
+  } else {
+    setStartButtonState(false, "开始分析");
+  }
+  state.toolCount = 0;
+  state.findingCount = 0;
+  state.analyzed = [];
+  state.awaitingDecision = false;
+  state.sessionEnded = true;
+  state.lastMermaid = "";
+  state.lastSnapshot = null;
+  state.sessionId = null;
+  $("session-id").textContent = "-";
 }
 
 function showAnalysis(address) {
@@ -417,7 +443,12 @@ async function waitForBridge(timeoutMs = 5000) {
 async function onStartClick() {
   const address = $("address-input").value.trim();
   const context = $("context-input").value.trim();
-  const button = $("start-button");
+
+  if (!state.bridgeReady || !window.pywebview?.api?.start_analysis) {
+    setHomeStatus("应用连接尚未完成，开始分析按钮会在初始化完成后自动恢复。", "err");
+    setStartButtonState(true, "等待应用连接");
+    return;
+  }
 
   if (!TRON_ADDRESS_RE.test(address)) {
     setAddressError(true);
@@ -426,7 +457,7 @@ async function onStartClick() {
   }
 
   setAddressError(false);
-  button.disabled = true;
+  setStartButtonState(true, "正在启动分析");
   setHomeStatus("正在准备分析，请稍等。", "info");
   try {
     const response = await window.pywebview.api.start_analysis(address, context);
@@ -439,7 +470,33 @@ async function onStartClick() {
   } catch (error) {
     setHomeStatus(`分析启动失败：${error?.message || error}`, "err");
   } finally {
-    button.disabled = false;
+    setStartButtonState(false, "开始分析");
+  }
+}
+
+async function initializeBridge() {
+  setStartButtonState(true, "等待应用连接");
+  setHomeStatus("正在连接桌面分析服务，连接完成后才可以开始分析。", "info");
+  const bridgeReady = await waitForBridge();
+  if (!bridgeReady) {
+    state.bridgeReady = false;
+    setHomeStatus("应用连接未准备好，请重启应用后重试。", "err");
+    setStartButtonState(true, "等待应用连接");
+    return;
+  }
+
+  try {
+    const response = await window.pywebview.api.ping("frontend-ready");
+    if (!response?.ok) {
+      throw new Error(response?.error || "ping 失败");
+    }
+    state.bridgeReady = true;
+    setHomeStatus("应用已连接，可以开始分析。", "ok");
+    setStartButtonState(false, "开始分析");
+  } catch (error) {
+    state.bridgeReady = false;
+    setHomeStatus(`应用连接未准备好：${error?.message || error}`, "err");
+    setStartButtonState(true, "等待应用连接");
   }
 }
 
@@ -499,9 +556,5 @@ window.addEventListener("DOMContentLoaded", async () => {
   updateContextCount();
   updateProgress(0);
   updateClueSummary();
-
-  const bridgeReady = await waitForBridge();
-  if (!bridgeReady) {
-    setHomeStatus("应用连接未准备好，请重启应用后重试。", "err");
-  }
+  await initializeBridge();
 });
