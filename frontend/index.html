@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TRON 地址风险分析</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <section id="view-home" class="app-shell home-shell">
+    <aside class="side-nav">
+      <div class="brand-mark" aria-hidden="true">
+        <span class="brand-mark__inner">T</span>
+      </div>
+      <nav class="nav-menu" aria-label="主导航">
+        <button class="nav-item is-active" type="button">首页</button>
+        <button class="nav-item" type="button">分析记录</button>
+        <button class="nav-item" type="button">报告中心</button>
+        <button class="nav-item" type="button">地址本</button>
+        <button class="nav-item" type="button">工具箱</button>
+        <button class="nav-item" type="button">帮助中心</button>
+        <button class="nav-item" type="button">设置</button>
+      </nav>
+      <div class="side-safety-card">
+        <div class="side-safety-card__title">安全说明</div>
+        <p>本工具仅提供风险参考，请结合转账背景和对方身份谨慎判断。</p>
+      </div>
+    </aside>
+
+    <main class="main-grid">
+      <section class="primary-column">
+        <div class="panel hero-panel">
+          <div class="hero-illustration" aria-hidden="true">
+            <div class="hero-orb hero-orb--large"></div>
+            <div class="hero-orb hero-orb--small"></div>
+            <div class="hero-doc"></div>
+            <div class="hero-shield"></div>
+            <div class="hero-lens"></div>
+          </div>
+          <div class="hero-copy">
+            <p class="eyebrow">地址检查助手</p>
+            <h1>TRON 地址风险分析</h1>
+            <p class="hero-subtitle">输入一个地址，系统会自动帮你排查风险。</p>
+          </div>
+
+          <div class="field-block">
+            <div class="field-label-row">
+              <label class="field-label" for="address-input">TRON 地址</label>
+              <span id="address-count" class="field-count">0 / 34</span>
+            </div>
+            <input
+              id="address-input"
+              type="text"
+              maxlength="34"
+              placeholder="例如：TXXx...请输入 34 位 TRON 地址"
+              class="text-input"
+              autocomplete="off"
+              spellcheck="false"
+              aria-describedby="address-help address-error"
+            />
+            <p id="address-help" class="field-help">不知道地址对不对也没关系，先粘贴进来，系统会帮你检查格式。</p>
+            <div id="address-error" class="inline-error hidden" role="alert" aria-live="polite">
+              <strong>请检查地址格式</strong>
+              <span>TRON 地址通常以 T 开头，共 34 位。你可以直接粘贴钱包地址，不需要加备注符号。</span>
+            </div>
+          </div>
+
+          <div class="field-block">
+            <div class="field-label-row">
+              <label class="field-label" for="context-input">补充情况（选填）</label>
+              <span id="context-count" class="field-count">0 / 200</span>
+            </div>
+            <textarea
+              id="context-input"
+              rows="4"
+              maxlength="200"
+              placeholder="例如：我向这个地址转过 500 USDT，对方说这是客服收款地址"
+              class="text-area"
+              aria-describedby="context-help"
+            ></textarea>
+            <p id="context-help" class="field-help">如果你知道转账时间、金额、对方身份，可以一并写上；不填也可以开始。</p>
+          </div>
+
+          <button id="start-button" class="primary-button" type="button">开始分析</button>
+          <p id="home-status" class="status-text" aria-live="polite"></p>
+
+          <div class="helper-card">
+            <div class="helper-card__title">我该输入什么？</div>
+            <p>TRON 地址通常以 T 开头，共 34 位。你可以直接粘贴钱包地址。</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-analysis" class="primary-column hidden">
+        <header class="analysis-topbar panel">
+          <div>
+            <p class="eyebrow">分析过程</p>
+            <h2>正在分析，请稍等</h2>
+          </div>
+          <div class="topbar-actions">
+            <span id="session-badge" class="status-badge">准备中</span>
+            <button id="back-home" class="ghost-button" type="button">返回首页</button>
+          </div>
+        </header>
+
+        <div class="panel progress-panel">
+          <div class="progress-panel__header">
+            <div>
+              <h3>系统正在自动做这几件事</h3>
+              <p id="progress-caption">已完成 0 / 3 步</p>
+            </div>
+            <div class="progress-art" aria-hidden="true"></div>
+          </div>
+          <ol class="step-list" aria-label="分析步骤">
+            <li class="step-item" data-step-state="active">
+              <span id="step-1-indicator" class="step-indicator">1</span>
+              <span>核对地址是否真实存在</span>
+            </li>
+            <li class="step-item" data-step-state="pending">
+              <span id="step-2-indicator" class="step-indicator">2</span>
+              <span>查找交易对手和异常转账</span>
+            </li>
+            <li class="step-item" data-step-state="pending">
+              <span id="step-3-indicator" class="step-indicator">3</span>
+              <span>生成风险结论和关系图</span>
+            </li>
+          </ol>
+          <div class="progress-meta">
+            <div class="progress-bar" aria-hidden="true">
+              <div id="progress-bar-fill" class="progress-bar__fill"></div>
+            </div>
+            <div class="progress-meta__labels">
+              <span id="progress-count-label">已完成 0 / 3 步</span>
+              <span id="time-estimate">预计还需 1-2 分钟</span>
+            </div>
+          </div>
+          <div class="clue-card">
+            <div>
+              <div class="clue-card__label">当前线索</div>
+              <div id="clue-summary" class="clue-card__value">目前还没有可疑线索，系统正在开始检查。</div>
+            </div>
+            <button id="toggle-graph" class="secondary-button" type="button">查看关系图</button>
+          </div>
+        </div>
+
+        <div id="decision-panel" class="panel decision-panel hidden">
+          <div class="decision-panel__header">
+            <p class="eyebrow eyebrow--warn">阶段性发现</p>
+            <h3>这个地址近 7 天和 2 个高风险地址有频繁资金往来，建议继续深挖。</h3>
+            <p id="decision-followup" class="decision-followup">下一步会继续追查资金最终流向，预计再用 1 分钟。</p>
+          </div>
+          <div class="decision-divider"></div>
+          <div class="decision-body">
+            <h4>你想怎么做？</h4>
+            <div class="decision-actions">
+              <button class="decision-btn decision-btn--primary" data-choice="continue" type="button">
+                <span>继续深挖</span>
+                <small>继续追查下一层资金去向，拿到更完整的结论。</small>
+              </button>
+              <button class="decision-btn decision-btn--secondary" data-choice="finish" type="button">
+                <span>先生成报告</span>
+                <small>按当前发现生成阶段报告，适合先留档或发给同事。</small>
+              </button>
+              <button class="decision-btn decision-btn--danger" data-choice="quit" type="button">
+                <span>停止分析</span>
+                <small>立即结束，不再继续；返回首页后，本次进度会丢失。</small>
+              </button>
+            </div>
+          </div>
+          <details class="decision-reason" open>
+            <summary>为什么会暂停？</summary>
+            <p>系统已完成当前阶段分析，是否继续由你决定。</p>
+            <p>返回首页后，本次进度会丢失。</p>
+          </details>
+        </div>
+
+        <div id="report-panel" class="panel final-report-panel hidden">
+          <div class="final-report-panel__header">
+            <div>
+              <p class="eyebrow eyebrow--success">分析完成</p>
+              <h3>先看这 3 件事</h3>
+            </div>
+            <button id="toggle-log" class="ghost-button" type="button" aria-expanded="false">查看详情</button>
+          </div>
+          <div id="final-report-content" class="final-report-content"></div>
+        </div>
+
+        <div id="details-panel" class="panel details-panel hidden">
+          <div class="details-panel__header">
+            <div>
+              <h3>详细过程</h3>
+              <p>这里保留分析过程、工具调用和原始结论，默认不会打扰你的主线阅读。</p>
+            </div>
+          </div>
+          <div id="log-stream" class="log-stream"></div>
+        </div>
+      </section>
+
+      <aside class="support-column">
+        <div class="panel support-card">
+          <h3>风险小助手</h3>
+          <p>我会在分析过程中为你提供关键提示和建议，帮你更安心地做决策。</p>
+        </div>
+        <div class="panel support-card">
+          <h3>小贴士</h3>
+          <p>频繁与高风险地址往来的地址，可能涉及洗钱、诈骗等风险行为，建议继续追查资金流向。</p>
+        </div>
+        <div class="panel support-card">
+          <h3>风险等级参考</h3>
+          <ul class="risk-list">
+            <li><span class="risk-pill risk-pill--high">高风险</span><span>存在明确的风险行为或资金关联</span></li>
+            <li><span class="risk-pill risk-pill--mid">中风险</span><span>存在可疑行为或信息不完整</span></li>
+            <li><span class="risk-pill risk-pill--low">低风险</span><span>未发现明显风险，相对安全</span></li>
+          </ul>
+        </div>
+        <div class="panel support-card">
+          <div class="faq-header">
+            <h3>常见问题</h3>
+            <button class="faq-more" type="button">更多</button>
+          </div>
+          <div class="faq-list">
+            <button class="faq-item" type="button">TRON 地址如何识别？</button>
+            <button class="faq-item" type="button">分析结果如何解读？</button>
+          </div>
+        </div>
+        <div id="graph-panel" class="panel support-card hidden">
+          <div class="graph-header">
+            <h3>资金关系图</h3>
+            <button id="hide-graph" class="faq-more" type="button">收起</button>
+          </div>
+          <p class="graph-help">用来查看这个地址和可疑地址之间的资金流向。</p>
+          <div id="mermaid-container" class="mermaid-container">
+            <div class="empty-graph">分析开始后，这里会显示关系图。</div>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="app-footer panel">
+      <div class="app-footer__left">
+        <span>本工具仅提供风险参考，不构成任何投资或法律建议，请谨慎判断，保护资产安全。</span>
+      </div>
+      <div class="app-footer__right">
+        <span>会话编号：<b id="session-id">-</b></span>
+      </div>
+    </footer>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
