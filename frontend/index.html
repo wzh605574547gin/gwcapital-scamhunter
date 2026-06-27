@@ -10,6 +10,16 @@
 </head>
 <body>
 
+  <!-- 返回主站按钮:固定右上角, 自动跟随当前域名后缀 (.cc / .xyz) -->
+  <a id="backToMainBtn" href="#" target="_self" style="position:fixed; top:14px; right:14px; z-index:9999; padding:8px 14px; font-size:13px; font-weight:700; color:#fff; background:rgba(34,211,238,0.18); border:1.5px solid #22d3ee; border-radius:10px; text-decoration:none; box-shadow:0 0 14px rgba(34,211,238,0.3); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); transition:0.25s;" onmouseover="this.style.background='rgba(34,211,238,0.35)'; this.style.boxShadow='0 0 22px rgba(34,211,238,0.5)';" onmouseout="this.style.background='rgba(34,211,238,0.18)'; this.style.boxShadow='0 0 14px rgba(34,211,238,0.3)';">← 返回主站</a>
+  <script>
+    (function(){
+      var host = location.hostname;
+      var root = host.endsWith('.cc') ? 'gwcapital.cc' : 'gwcapital.xyz';
+      document.getElementById('backToMainBtn').href = 'https://www.' + root + '/home.html';
+    })();
+  </script>
+
   <!-- ============== 启动屏 ============== -->
   <section id="view-home" class="min-h-screen flex items-center justify-center px-6 cy-fadein">
     <div class="w-full" style="max-width: 640px;">
