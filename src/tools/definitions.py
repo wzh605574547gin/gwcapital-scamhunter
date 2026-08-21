@@ -76,6 +76,26 @@ TOOL_DEFINITIONS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "check_approvals",
+            "description": (
+                "查一个地址的 TRC20 授权(approve)记录。"
+                "**诈骗识别关键工具**:如果地址给陌生合约签了 unlimited(无上限)授权,"
+                "几乎可以确认被钓鱼,随时会被盗。"
+                "正常用户只会授权给知名 DEX(SunSwap/JustLend 等,project_name 会有标记)。"
+                "对用户怀疑被骗的地址,一定要调这个工具。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "address": {"type": "string", "description": "TRON 地址"}
+                },
+                "required": ["address"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "mark_branch_complete",
             "description": (
                 "标记某一条追溯分支已查清,不再深入。"

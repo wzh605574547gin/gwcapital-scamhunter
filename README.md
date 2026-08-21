@@ -1,8 +1,8 @@
 # GWCAPITAL · TRON ScamHunter
 
-> **AI 驱动的 TRON 链上诈骗追溯工具** — 桌面原生 · 赛博朋克风 · DeepSeek 驱动
+> **AI 驱动的 TRON 链上风险追溯工具** — 网页 / 桌面双端 · 赛博朋克风 · DeepSeek 驱动
 
-一个在 macOS 本地跑的 TRON 地址风险分析 Agent。你丢一个地址 + 简短背景信息进去,AI 会**自主调用 TronScan 链上 API** 追溯资金流向、识别风险标签、生成 Mermaid 关系图,每个分析阶段结束会暂停等你决定是否继续深挖,最后输出结构化报告。
+输入公开 TRON 地址与可选背景信息，AI 会**自主调用 TronScan 链上 API** 追溯资金流向、识别风险标签、生成 Mermaid 关系图。每个分析阶段结束会暂停，由用户决定是否继续深挖，最后输出结构化报告。
 
 ---
 
@@ -13,7 +13,9 @@
 - 🧠 **用户背景信息注入** — 自然语言描述会被 AI 与链上数据交叉验证
 - 🎨 **赛博朋克终端风 UI** — 网格背景、霓虹描边、CRT 扫描线、Mermaid 实时绘图
 - 🇨🇳 **原生中文推理** — 依托 DeepSeek V3,性价比约为 Claude 的 1/10
-- 🔒 **纯本地运行** — 不上传任何数据,API Key 只存本机 `.env`
+- 🌐 **网页直接使用** — 前端通过 WebSocket 连接 Fly.io 后端，密钥不下发浏览器
+- 🖥️ **保留桌面版** — PyWebView 本地模式仍可使用，密钥存本机 `.env`
+- 🛡️ **额度保护** — 按网络限制每日免费次数，并设置服务器每日成本上限
 
 ---
 
@@ -21,15 +23,25 @@
 
 | 层 | 选型 |
 |---|---|
-| 桌面框架 | PyWebView(原生 macOS 窗口,内嵌 WebKit) |
+| 客户端 | 静态网页 + PyWebView 桌面版 |
 | 前端 | 纯 HTML/CSS/JS + Tailwind CDN + Mermaid + marked |
-| 后端 | Python 3.12,asyncio,httpx,SQLAlchemy(预留) |
+| 后端 | Python 3.12 + FastAPI + WebSocket + Fly.io |
 | AI 模型 | **DeepSeek V3**(OpenAI 兼容接口) |
 | 链上数据 | **TronScan REST API** |
 
 ---
 
-## 安装 & 运行
+## 网页部署
+
+- 静态前端：`frontend/`，部署到 Pages，自定义域名为 `scamhunter.gwcapital.xyz` / `.cc`
+- API 后端：Fly.io `gwcapital-scamhunter`，对外域名为 `api.gwcapital.xyz` / `.cc`
+- 健康检查：`GET /healthz`
+- 额度查询：`GET /api/quota`
+- 分析通道：`WS /ws/analyze`
+
+后端密钥通过 Fly Secrets 提供：`TRON_PRO_API_KEY`、`DEEPSEEK_API_KEY`。不要写入仓库或前端代码。
+
+## 桌面版安装 & 运行
 
 ### 第一次跑
 
@@ -84,6 +96,7 @@ tron-scam-agent/
 ├── src/
 │   ├── main.py             # PyWebView 入口
 │   ├── api.py              # JS Bridge + 后台 Agent 线程管理
+│   ├── server.py           # FastAPI / WebSocket 网页后端
 │   ├── agent.py            # Agent 主循环(OpenAI 协议)
 │   ├── event_bus.py        # 后端事件推前端
 │   ├── tron_client.py      # TronScan REST 封装(6 个端点)
@@ -115,8 +128,9 @@ tron-scam-agent/
 
 - **不存储任何私钥、助记词**
 - **不签名任何交易** —— 纯查询工具
-- **API Key 只存本机 `.env`**,`.env` 已在 `.gitignore`
-- **不上传任何链上地址到第三方** —— 数据仅在 TronScan(查询) ↔ DeepSeek(分析) 间流转
+- **网页密钥只存 Fly Secrets；桌面密钥只存本机 `.env`**
+- 网页分析会把用户提交的公开地址与背景信息发送到 GWCAPITAL 后端，并调用 TronScan 和 DeepSeek 完成分析
+- 服务不要求连接钱包，不收集私钥或助记词
 
 报告结论**仅供参考,不构成法律或投资建议**。
 

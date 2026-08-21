@@ -48,6 +48,16 @@ def _as_int(v: Any) -> int:
             return 0
 
 
+def _as_float(v: Any) -> float:
+    """同 _as_int 但转 float,用于 USD 价值、代币余额等。"""
+    if v is None or v == "":
+        return 0.0
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 class TronClient:
     """TronScan 异步客户端。
 
@@ -208,16 +218,80 @@ class TronClient:
             "total_supply": t.get("total_supply_str") or t.get("total_supply"),
         }
 
+    async def get_address_approvals(self, address: str, limit: int = 30) -> list[dict[str, Any]]:
+        """查一个地址的 TRC20 授权(approve)列表。
+
+        关键字段:
+        - unlimited: True 表示无上限授权(诈骗识别红线)
+        - from_address / to_address / contract_address: 授权三方关系
+        - project: 已知 DApp 的话会有 id/name
+        """
+        raw = await self._get(
+            "/api/account/approve/list",
+            {"address": address, "limit": limit, "start": 0},
+        )
+        items = raw.get("data") or []
+        out: list[dict[str, Any]] = []
+        for a in items:
+            token_info = a.get("tokenInfo") or {}
+            project = a.get("project") or {}
+            out.append(
+                {
+                    "from_address": a.get("from_address"),
+                    "to_address": a.get("to_address"),
+                    "token_contract": a.get("contract_address"),
+                    "token_symbol": token_info.get("tokenAbbr") or token_info.get("tokenName"),
+                    "amount_raw": a.get("amount"),
+                    "unlimited": bool(a.get("unlimited", False)),
+                    "project_id": project.get("id"),
+                    "project_name": project.get("name"),
+                    "operate_time": a.get("operate_time"),
+                }
+            )
+        return out
+
+    async def get_contract_info(self, address: str) -> dict[str, Any]:
+        """合约元信息:是否已验证源码、是否代理合约、创建时间。"""
+        raw = await self._get("/api/contract", {"contract": address})
+        items = raw.get("data") or []
+        if not items:
+            return {"found": False}
+        d = items[0]
+        return {
+            "found": True,
+            "verify_status": d.get("verify_status"),  # 0/1/2/3 数值
+            "is_proxy": bool(d.get("is_proxy")),
+            "proxy_implementation": d.get("proxy_implementation"),
+            "trx_count": _as_int(d.get("trxCount")),
+            "date_created": d.get("date_created"),
+            "balance_trx": _as_float(d.get("balance", 0)) / 1_000_000,
+            "balance_usd": _as_float(d.get("balanceInUsd")),
+        }
+
     async def get_account_tokens(self, address: str) -> list[dict[str, Any]]:
-        """账户持有的代币列表。"""
+        """账户持有的代币列表,按 USD 价值降序。
+
+        TronScan 这个端点会帮我们预先算好:
+        - amount: 已按 decimals 还原的人类可读余额
+        - amountInUsd: 对应美元总价
+        """
         raw = await self._get("/api/account/tokens", {"address": address})
-        items = raw.get("data", []) or []
-        return [
-            {
-                "token_symbol": t.get("tokenAbbr") or t.get("tokenName"),
-                "token_contract": t.get("tokenId"),
-                "balance": t.get("balance"),
-                "token_type": t.get("tokenType"),
-            }
-            for t in items
-        ]
+        items = raw.get("data") or []
+        out: list[dict[str, Any]] = []
+        for t in items:
+            amount_usd = _as_float(t.get("amountInUsd"))
+            out.append(
+                {
+                    "symbol": t.get("tokenAbbr") or t.get("tokenName"),
+                    "name": t.get("tokenName"),
+                    "contract": t.get("tokenId"),
+                    "balance": _as_float(t.get("amount")),
+                    "amount_usd": round(amount_usd, 2),
+                    "price_usd": _as_float(t.get("tokenPriceInUsd")),
+                    "token_type": t.get("tokenType"),
+                    "level": t.get("tokenLevel"),
+                    "is_vip": bool(t.get("vip", False)),
+                }
+            )
+        out.sort(key=lambda x: x["amount_usd"], reverse=True)
+        return out

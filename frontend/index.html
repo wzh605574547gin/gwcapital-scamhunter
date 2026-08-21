@@ -2,7 +2,8 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <title>GWCAPITAL · TRON ScamHunter</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>GWCAPITAL · USDT 链上侦探</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
@@ -75,11 +76,14 @@
         </button>
 
         <div id="home-status" class="cy-tag text-center mt-4" style="min-height: 16px;"></div>
+        <div class="cy-usage-note">
+          每个网络每日免费分析 3 次 · 仅查询公开链上数据 · 不需要连接钱包
+        </div>
       </div>
 
       <!-- 底部信息 -->
       <div class="flex items-center justify-between mt-8 cy-tag">
-        <span>[SYS] v0.2.0 · DEEPSEEK-V3 · TRONSCAN</span>
+        <span>[SYS] v0.4.0 · WEB READY · DEEPSEEK-V3</span>
         <span>© GWCAPITAL</span>
       </div>
     </div>
@@ -101,7 +105,7 @@
     </header>
 
     <!-- 三栏 -->
-    <div class="flex-1 overflow-hidden"
+    <div class="analysis-grid flex-1 overflow-hidden"
          style="display: grid; grid-template-columns: 280px 1fr 440px;">
 
       <!-- 左侧栏 -->
@@ -177,7 +181,8 @@
       <span><span class="cy-sb-label">MODEL</span><b>DEEPSEEK-V3</b></span>
       <span><span class="cy-sb-label">API</span><b>TRONSCAN</b></span>
       <span><span class="cy-sb-label">SESSION</span><b id="session-id">—</b></span>
-      <span style="margin-left: auto;">制作：杰明GWCAPITAL · v0.2.0</span>
+      <span><span class="cy-sb-label">本次成本</span><b id="session-cost">$0.0000</b></span>
+      <span class="cy-copyright" style="margin-left: auto;">制作：杰明GWCAPITAL · v0.4.0</span>
     </footer>
   </section>
 

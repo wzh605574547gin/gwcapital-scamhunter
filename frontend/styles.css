@@ -183,6 +183,14 @@ input, textarea, .markdown-body, .allow-select { user-select: text; }
 .cy-input::placeholder, .cy-textarea::placeholder { color: var(--cy-text-faded); }
 .cy-textarea { resize: none; line-height: 1.5; }
 
+.cy-usage-note {
+  margin-top: 14px;
+  color: var(--cy-text-faded);
+  font-size: 10px;
+  line-height: 1.7;
+  text-align: center;
+}
+
 /* ---------- 按钮 ---------- */
 .cy-btn {
   display: inline-flex;
@@ -516,3 +524,69 @@ input, textarea, .markdown-body, .allow-select { user-select: text; }
   to   { opacity: 1; transform: translateY(0); }
 }
 .cy-fadein { animation: cy-fadein 0.4s ease-out; }
+
+/* ---------- 网页/手机端 ---------- */
+@media (max-width: 900px) {
+  #view-home { padding: 28px 16px; }
+  #view-home .cy-brand { font-size: clamp(32px, 11vw, 48px) !important; }
+
+  #view-analysis {
+    height: auto !important;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  .cy-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    padding: 9px 12px;
+    gap: 8px;
+  }
+  .cy-topbar .cy-tag { display: none; }
+  .cy-topbar .cy-brand { font-size: 12px !important; }
+  .cy-topbar .cy-sub { font-size: 11px !important; }
+  .cy-topbar .cy-badge { display: none; }
+
+  .analysis-grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    overflow: visible !important;
+  }
+  .analysis-grid > .cy-sidebar {
+    order: 1;
+    border-right: 0;
+    border-bottom: 1px solid var(--cy-border);
+    padding: 14px 12px;
+    max-height: 300px;
+  }
+  .analysis-grid > main {
+    order: 2;
+    min-height: 68vh;
+  }
+  .analysis-grid > .cy-sidebar-right {
+    order: 3;
+    min-height: 340px;
+    border-left: 0;
+    border-top: 1px solid var(--cy-border);
+    padding: 16px 12px;
+  }
+  #log-stream { min-height: 54vh; padding: 14px 12px; }
+  #decision-panel { position: sticky; bottom: 0; z-index: 15; padding: 12px 8px !important; }
+  #decision-panel .flex { flex-wrap: wrap; }
+  #decision-panel .cy-btn { flex: 1 1 120px; padding: 11px 8px; font-size: 12px; }
+
+  .cy-statusbar {
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    padding: 8px 12px;
+  }
+  .cy-copyright { width: 100%; margin-left: 0 !important; }
+  .cy-phase-card, .cy-report-card { padding: 14px 12px; }
+}
+
+@media (max-width: 420px) {
+  .cy-panel { padding: 18px 14px !important; }
+  .cy-input, .cy-textarea { font-size: 13px; padding: 11px 12px; }
+  .cy-btn { letter-spacing: .12em; }
+  .cy-topbar .cy-sub { display: none; }
+}

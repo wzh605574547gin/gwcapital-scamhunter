@@ -1,0 +1,37 @@
+app = "gwcapital-scamhunter"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  DAILY_BUDGET_USD = "3.0"
+  DAILY_LIMIT_PER_IP = "3"
+  PHASE_DECISION_TIMEOUT_S = "900"
+  FRONTEND_ORIGINS = "https://scamhunter.gwcapital.xyz,https://scamhunter.gwcapital.cc,https://gwcapital-scamhunter.pages.dev,http://localhost:8000,http://localhost:8080,http://localhost:8765,http://127.0.0.1:8000,http://127.0.0.1:8080,http://127.0.0.1:8765"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 25
+    hard_limit = 50
+
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

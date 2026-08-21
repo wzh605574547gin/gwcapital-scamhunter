@@ -12,6 +12,152 @@ const state = {
   sessionId: null,
 };
 
+// ---------------- 后端适配：桌面 PyWebView / 网页 WebSocket ----------------
+const scamBackend = {
+  mode: null,
+  socket: null,
+  initPromise: null,
+
+  apiBase() {
+    if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+      return "http://localhost:8000";
+    }
+    return location.hostname.endsWith(".cc")
+      ? "https://api.gwcapital.cc"
+      : "https://api.gwcapital.xyz";
+  },
+
+  ensureReady() {
+    if (!this.initPromise) this.initPromise = this.init();
+    return this.initPromise;
+  },
+
+  async init() {
+    if (location.protocol === "file:") {
+      const ok = await waitForBridge();
+      if (!ok) throw new Error("桌面桥接未就绪，请重启应用");
+      this.mode = "desktop";
+      setHomeStatus("✓ DESKTOP ENGINE READY", "ok");
+      return;
+    }
+
+    this.mode = "web";
+    await this.refreshQuota();
+  },
+
+  async refreshQuota() {
+    if (this.mode !== "web") return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(this.apiBase() + "/api/quota", {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const quota = await response.json();
+      if (!quota.server_budget_ok) {
+        setHomeStatus("× 今日服务器分析预算已用完，请明天再来", "err");
+      } else if (quota.blocked) {
+        setHomeStatus("× 当前网络无法使用分析服务", "err");
+      } else {
+        setHomeStatus(`✓ WEB ENGINE READY · 今日剩余 ${quota.remaining_today}/${quota.daily_limit} 次`, "ok");
+      }
+    } catch (error) {
+      const suffix = error?.name === "AbortError" ? "唤醒超时" : "暂未连接";
+      setHomeStatus(`△ API ${suffix} · 点击分析时将自动重试`, "info");
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  async startAnalysis(address, userContext) {
+    await this.ensureReady();
+    if (this.mode === "desktop") {
+      return window.pywebview.api.start_analysis(address, userContext);
+    }
+
+    this.close();
+    const wsUrl = this.apiBase().replace(/^http/, "ws") + "/ws/analyze";
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const socket = new WebSocket(wsUrl);
+      this.socket = socket;
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        socket.__manualClose = true;
+        socket.close();
+        resolve({ ok: false, error: "连接分析服务器超时，请稍后再试" });
+      }, 30000);
+
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          window.__onAgentEvent(payload);
+        } catch (error) {
+          console.error("invalid websocket event", error);
+        }
+      };
+
+      socket.onopen = () => {
+        if (settled) return;
+        clearTimeout(timeout);
+        try {
+          // 先切换并清空分析视图，再发 start，避免极快返回的首条事件被清空。
+          showAnalysis(address, userContext);
+          socket.send(JSON.stringify({
+            action: "start",
+            address,
+            user_context: userContext,
+          }));
+          settled = true;
+          resolve({ ok: true, viewShown: true });
+        } catch (error) {
+          settled = true;
+          resolve({ ok: false, error: error?.message || String(error) });
+        }
+      };
+
+      socket.onerror = () => {
+        if (settled) return;
+        clearTimeout(timeout);
+        settled = true;
+        resolve({ ok: false, error: "无法连接分析服务器" });
+      };
+
+      socket.onclose = () => {
+        clearTimeout(timeout);
+        if (!settled) {
+          settled = true;
+          resolve({ ok: false, error: "分析服务器连接已关闭" });
+        } else if (!socket.__manualClose && !state.sessionEnded && !$('view-analysis').classList.contains('hidden')) {
+          logError("分析连接已结束。如尚未看到结论，请返回后重新发起分析。");
+          setBadge("CONNECTION CLOSED", "red");
+        }
+        if (this.socket === socket) this.socket = null;
+      };
+    });
+  },
+
+  async userDecision(choice) {
+    if (this.mode === "desktop") return window.pywebview.api.user_decision(choice);
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      return { ok: false, error: "分析连接已断开" };
+    }
+    this.socket.send(JSON.stringify({ action: "decision", choice }));
+    return { ok: true };
+  },
+
+  close() {
+    if (!this.socket) return;
+    this.socket.__manualClose = true;
+    try { this.socket.close(1000, "client close"); } catch (_) {}
+    this.socket = null;
+  },
+};
+
 // ---------------- 工具 ----------------
 const $ = (id) => document.getElementById(id);
 const short = (a) => (a && a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a || "");
@@ -237,7 +383,7 @@ async function onDecisionClick(choice) {
   if (!state.awaitingDecision) return;
   document.querySelectorAll(".decision-btn").forEach(b => b.disabled = true);
   try {
-    const res = await window.pywebview.api.user_decision(choice);
+    const res = await scamBackend.userDecision(choice);
     if (!res.ok) {
       logError("决策发送失败:" + (res.error || "unknown"));
     } else {
@@ -263,7 +409,7 @@ window.__onAgentEvent = function(ev) {
     const { type, data } = ev;
     switch (type) {
       case "session_start":
-        logInfo(`TRACE START · ${short(data.address)}`);
+        logInfo(`TRACE START · ${short(data.address)}${data.remaining_today != null ? ` · 今日剩余 ${data.remaining_today} 次` : ""}`);
         break;
       case "thinking":
         logThinking(data.text);
@@ -303,6 +449,9 @@ window.__onAgentEvent = function(ev) {
         logInfo(`SESSION END · ${label}`);
         break;
       }
+      case "usage_update":
+        if ($("session-cost")) $("session-cost").textContent = `$${Number(data.cost_usd || 0).toFixed(4)}`;
+        break;
       case "error":
         logError(data.message || "unknown");
         break;
@@ -337,12 +486,12 @@ async function onStartClick() {
   }
 
   btn.disabled = true;
-  setHomeStatus("▸ INITIALIZING…", "info");
+  setHomeStatus("▸ 正在连接分析服务器…", "info");
   try {
-    const res = await window.pywebview.api.start_analysis(addr, ctx);
+    const res = await scamBackend.startAnalysis(addr, ctx);
     if (res && res.ok) {
       setHomeStatus("", "info");
-      showAnalysis(addr, ctx);
+      if (!res.viewShown) showAnalysis(addr, ctx);
     } else {
       setHomeStatus("× START FAILED · " + (res?.error || "unknown"), "err");
     }
@@ -397,13 +546,16 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (!state.sessionEnded && state.toolCount > 0) {
       if (!confirm("分析尚未结束,确定返回首页?(当前进度会丢失)")) return;
     }
+    scamBackend.close();
     showHome();
     $("address-input").value = "";
     setHomeStatus("");
+    scamBackend.refreshQuota();
   });
 
-  const bridgeOk = await waitForBridge();
-  if (!bridgeOk) {
-    setHomeStatus("× BRIDGE NOT READY · 请重启应用", "err");
+  try {
+    await scamBackend.ensureReady();
+  } catch (error) {
+    setHomeStatus("× ENGINE NOT READY · " + (error?.message || error), "err");
   }
 });

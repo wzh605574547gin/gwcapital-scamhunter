@@ -10,6 +10,76 @@
 
 # 追溯策略
 
+## analyze_address 返回的数据字段
+
+每次 `analyze_address` 都会返回 4 个维度的数据:
+
+1. **account_info** — 余额 TRX、交易总数、创建时间、public_tag、是否合约、多签
+2. **security_data** — 黑名单、诈骗交易、广告 memo 等风险标签
+3. **holdings** — 持仓代币 + USD 价值(见下文)
+4. **flows_recent** — 最近 50 笔 TRC20 的进/出聚合(见下文)
+5. **contract_details**(仅合约地址)— 是否已验证源码、是否代理合约
+
+## 关于持仓量(holdings 字段)
+
+每次 `analyze_address` 都会返回 `holdings`,格式:
+```
+holdings: {
+  top_tokens: [{symbol, balance, usd_value, is_vip, level}, ...],
+  total_tokens_held: N,
+  total_usd_value: 总美元价值
+}
+```
+
+怎么用这条信息做判断:
+
+- **USDT 余额高 + 历史活跃** → 可能是热钱包/归集地址/正规企业账户(查 public_tag 确认)
+- **USDT 余额≈0 + 历史收过大额 USDT** → **资金已转走**,重点查最近的 USDT 转出 tx,追那条路径
+- **总美元价值 < $10 + 高交易笔数** → 典型"一次性中转地址",扫进扫出就弃
+- **持有 level=3/4 或带 redTag 的代币** → 与诈骗代币生态绑定,可疑度↑
+- **USDT 余额 vs 历史流入金额** 的差 = 已流出金额,是关键指标
+
+**每次分析核心地址后,先用一句话总结持仓:** "当前持 X USDT(约 $Y),历史流入 Z USDT,差额 W USDT 已转走"。
+
+## 关于流向(flows_recent 字段)
+
+`flows_recent.by_token` 给出了**最近 50 笔 TRC20 交易**按代币聚合的进出:
+```
+{symbol: "USDT", inflow: 5230, outflow: 5228, net: 2, in_count: 12, out_count: 15}
+```
+
+怎么判断:
+- **in_count >> out_count 且 net 为正** → 典型"归集地址"(收钱聚合)
+- **in_count ≈ out_count 且 net ≈ 0** → 典型"中转/代理地址"(钱过水就走)
+- **out_count >> in_count + net 负** → 主动分发地址(可能是骗子的出金中心)
+- **大额一进一出,间隔极短(几分钟内)** → 临时钱包/洗钱链路
+- **单笔金额规律(比如都是 100/500/1000 整数 USDT)** → 人工被骗打款的典型金额
+
+## 关于合约(contract_details 字段,仅当 is_contract=true)
+
+- `verify_status=2 或 3` → 源码已验证,可信度↑
+- `verify_status=0` → **源码未公开,高风险信号**(诈骗代币/跑路合约常见)
+- `is_proxy=true` → 代理合约,可被悄悄升级,可疑
+
+## 关于授权(check_approvals 工具)
+
+**这是识别"用户已被钓鱼"的关键工具**,对受害者地址务必调用。
+
+`check_approvals` 返回的核心字段:
+- `unlimited: true` → 无上限授权(给某个合约 99,999,999 USDT 任意花)
+- `to_address` → 被授权的合约(谁能花用户的钱)
+- `project_name` → 如果有名字说明是已知 DApp;**如果为 null 且 unlimited=true,高度可疑**
+
+判断规则:
+- **无上限 + 陌生合约** → 几乎可以确认被钓鱼,立刻 record_finding(severity=critical)
+- **无上限 + 已知 DEX(SunSwap/JustLend)** → 正常 DeFi 用户
+- **有限额授权** → 一般不是骗局(骗子不会给自己设额度)
+
+调用时机:
+- 用户在 context 里说"被骗了 XXX USDT" → 必须查
+- 目标地址是 USDT 余额异常低的受害者 → 必须查
+- 追溯到的可疑中转地址 → 可选,看时间允许
+
 ## 何时继续追溯
 - 发现可疑大额转账(单笔 > 1000 USDT)且对手方未分析过
 - 资金流入新创建地址(< 30 天)

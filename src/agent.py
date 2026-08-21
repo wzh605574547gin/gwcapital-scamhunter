@@ -44,7 +44,12 @@ class AgentEvent:
 # ---------- Agent 核心 ----------
 
 class Agent:
-    def __init__(self, target_address: str, user_context: str = ""):
+    def __init__(
+        self,
+        target_address: str,
+        user_context: str = "",
+        on_usage: Callable[[int, int], Any] | None = None,
+    ):
         self.target = target_address
         self.user_context = (user_context or "").strip()
         self.graph = AddressGraph(target_address)
@@ -53,6 +58,7 @@ class Agent:
         self.phase_tool_calls = 0
         self.round = 0
         self._paused_payload: dict[str, Any] | None = None
+        self._on_usage = on_usage  # 每次 LLM 响应后回调 (prompt_tokens, completion_tokens)
 
         self._load_system_prompt()
 
@@ -113,6 +119,13 @@ class Agent:
                 ev = AgentEvent(type="error", data={"message": str(e)})
                 emit(ev)
                 return ev
+
+            # 记录 token 用量(用于成本熔断)
+            if self._on_usage and resp.usage:
+                try:
+                    self._on_usage(resp.usage.prompt_tokens, resp.usage.completion_tokens)
+                except Exception:
+                    pass
 
             msg = resp.choices[0].message
             # 把 assistant 消息加入历史(包括可能的 tool_calls)
@@ -185,14 +198,23 @@ class Agent:
         emit(ev)
         return ev
 
-    def resume_continue(self) -> None:
-        """用户选"继续深挖",注入新的 user 消息让 LLM 接着做。"""
-        self.messages.append(
-            {
-                "role": "user",
-                "content": "用户选择**继续深挖**。请基于目前已知信息,推进到下一个分析阶段,完成后再次调用 request_user_decision。",
-            }
+    def resume_continue(self, note: str = "") -> None:
+        """用户选"继续深挖",注入新的 user 消息让 LLM 接着做。
+
+        note 是用户在暂停时可选输入的新指令,会作为本阶段的优先任务。
+        """
+        content = (
+            "用户选择**继续深挖**。"
+            "请基于目前已知信息,推进到下一个分析阶段,完成后再次调用 request_user_decision。"
         )
+        note = (note or "").strip()
+        if note:
+            content += (
+                f"\n\n---\n## 用户新给的指令(本阶段优先任务)\n\n{note}\n\n---\n\n"
+                "请优先响应用户这条指令:如果是指定要查某个地址、某类线索或某个方向,"
+                "把它放在本阶段最先做;如果用户的假设与链上数据冲突,用数据说明。"
+            )
+        self.messages.append({"role": "user", "content": content})
 
     def resume_finish(self) -> None:
         """用户选"结束生成报告",让 LLM 产出最终 Markdown 报告。"""
